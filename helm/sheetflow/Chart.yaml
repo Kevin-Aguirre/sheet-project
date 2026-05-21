@@ -1,0 +1,6 @@
+apiVersion: v2
+name: sheetflow
+description: SheetFlow - MP3 to playable piano sheet music
+version: 0.1.0
+appVersion: "0.1.0"
+type: application

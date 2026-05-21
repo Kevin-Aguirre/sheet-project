@@ -1,0 +1,77 @@
+api:
+  image: sheetflow/api:latest
+  replicas: 1
+  port: 8080
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  env:
+    maxUploadSize: "52428800"
+
+worker:
+  image: sheetflow/worker:latest
+  replicas: 1
+  metricsPort: 9090
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilization: 70
+
+frontend:
+  image: sheetflow/frontend:latest
+  replicas: 1
+  port: 80
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+postgres:
+  enabled: true
+  image: postgres:16-alpine
+  storage: 10Gi
+  user: sheetflow
+  password: sheetflow
+  database: sheetflow
+
+redis:
+  enabled: true
+  image: redis:7-alpine
+
+minio:
+  enabled: true
+  image: minio/minio
+  storage: 20Gi
+  rootUser: minioadmin
+  rootPassword: minioadmin
+  bucket: sheetflow
+
+ingress:
+  enabled: true
+  className: nginx
+  host: sheetflow.local
+  tls: false
+  annotations: {}
+
+monitoring:
+  enabled: true
+  serviceMonitor: true
+
+serviceAccount:
+  create: true
+  annotations: {}

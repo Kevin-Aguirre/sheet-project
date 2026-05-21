@@ -1,0 +1,35 @@
+postgres:
+  enabled: false
+
+redis:
+  enabled: false
+
+minio:
+  enabled: false
+
+api:
+  env:
+    databaseUrl: ""
+    redisUrl: ""
+    s3Bucket: sheetflow-prod
+    s3Region: us-east-1
+    s3UsePathStyle: "false"
+
+worker:
+  env:
+    s3Bucket: sheetflow-prod
+    s3Region: us-east-1
+    s3UsePathStyle: "false"
+
+ingress:
+  className: alb
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+  host: ""
+
+serviceAccount:
+  create: true
+  annotations:
+    eks.amazonaws.com/role-arn: ""

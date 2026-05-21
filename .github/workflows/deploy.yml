@@ -1,0 +1,63 @@
+name: Deploy to AWS
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deployment environment"
+        required: true
+        default: "prod"
+        type: choice
+        options:
+          - prod
+
+env:
+  AWS_REGION: us-east-1
+  EKS_CLUSTER: sheetflow-prod
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push images
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          TAG: ${{ github.sha }}
+        run: |
+          docker build -t $REGISTRY/sheetflow-api:$TAG ./api
+          docker build -t $REGISTRY/sheetflow-worker:$TAG ./worker
+          docker build -t $REGISTRY/sheetflow-frontend:$TAG ./frontend
+          docker push $REGISTRY/sheetflow-api:$TAG
+          docker push $REGISTRY/sheetflow-worker:$TAG
+          docker push $REGISTRY/sheetflow-frontend:$TAG
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
+
+      - uses: azure/setup-helm@v4
+
+      - name: Deploy with Helm
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          TAG: ${{ github.sha }}
+        run: |
+          helm upgrade --install sheetflow ./helm/sheetflow \
+            -f ./helm/sheetflow/values-aws.yaml \
+            --set api.image=$REGISTRY/sheetflow-api:$TAG \
+            --set worker.image=$REGISTRY/sheetflow-worker:$TAG \
+            --set frontend.image=$REGISTRY/sheetflow-frontend:$TAG

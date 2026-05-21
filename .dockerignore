@@ -1,0 +1,9 @@
+.git
+node_modules
+__pycache__
+*.pyc
+.env
+terraform
+helm
+monitoring
+.github
