@@ -1,9 +1,9 @@
 package handler
 
 import (
+	"io"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/sheetflow/api/internal/db"
@@ -42,13 +42,36 @@ func (h *JobHandler) GetSheet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url, err := h.s3.PresignedURL(r.Context(), job.ResultKey, 15*time.Minute)
+	body, err := h.s3.Download(r.Context(), job.ResultKey)
 	if err != nil {
-		slog.Error("presign failed", "error", err, "job_id", id)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate download URL"})
+		slog.Error("s3 download failed", "error", err, "job_id", id)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to fetch sheet"})
 		return
 	}
-	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
+	defer body.Close()
+
+	w.Header().Set("Content-Type", "application/vnd.recordare.musicxml+xml")
+	io.Copy(w, body)
+}
+
+func (h *JobHandler) GetOriginal(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	job, err := h.store.GetJob(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "job not found"})
+		return
+	}
+
+	body, err := h.s3.Download(r.Context(), job.S3Key)
+	if err != nil {
+		slog.Error("s3 download failed", "error", err, "job_id", id)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to fetch audio"})
+		return
+	}
+	defer body.Close()
+
+	w.Header().Set("Content-Type", "audio/mpeg")
+	io.Copy(w, body)
 }
 
 func (h *JobHandler) ListJobs(w http.ResponseWriter, r *http.Request) {

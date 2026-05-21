@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { OpenSheetMusicDisplay, Cursor } from "opensheetmusicdisplay";
+import { OpenSheetMusicDisplay } from "opensheetmusicdisplay";
+import PlaybackEngine from "osmd-audio-player";
+import {
+  PlaybackEvent,
+  PlaybackState,
+} from "osmd-audio-player/dist/PlaybackEngine";
 import { Play, Pause, Square, Minus, Plus } from "lucide-react";
 
 interface Props {
@@ -8,13 +13,15 @@ interface Props {
 
 export default function SheetViewer({ musicXmlUrl }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const osmdRef = useRef<OpenSheetMusicDisplay | null>(null);
-  const cursorRef = useRef<Cursor | null>(null);
-  const timerRef = useRef<number | null>(null);
+  const playerRef = useRef<PlaybackEngine | null>(null);
 
   const [loaded, setLoaded] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const [tempo, setTempo] = useState(1.0);
+  const [playbackState, setPlaybackState] = useState<PlaybackState>(
+    PlaybackState.INIT
+  );
+  const [bpm, setBpm] = useState(120);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -24,16 +31,44 @@ export default function SheetViewer({ musicXmlUrl }: Props) {
       backend: "svg",
       drawTitle: true,
       drawComposer: false,
+      followCursor: false,
     });
 
     osmdRef.current = osmd;
+    const player = new PlaybackEngine();
+    playerRef.current = player;
+
+    player.on(PlaybackEvent.STATE_CHANGE, (state: PlaybackState) => {
+      setPlaybackState(state);
+    });
+
+    // Scroll the sheet container (not the page) to follow the cursor
+    player.on(PlaybackEvent.ITERATION, () => {
+      const cursor = osmd.cursor;
+      if (!cursor || !scrollRef.current) return;
+      const cursorEl = cursor.cursorElement;
+      if (!cursorEl) return;
+      const containerTop = scrollRef.current.getBoundingClientRect().top;
+      const cursorTop = cursorEl.getBoundingClientRect().top;
+      const offset = cursorTop - containerTop + scrollRef.current.scrollTop;
+      const target = offset - scrollRef.current.clientHeight / 3;
+      scrollRef.current.scrollTo({ top: target, behavior: "smooth" });
+    });
 
     osmd
       .load(musicXmlUrl)
       .then(() => {
         osmd.render();
-        osmd.cursor.show();
-        cursorRef.current = osmd.cursor;
+        return player.loadScore(osmd as any);
+      })
+      .then(() => {
+        // Use tempo from MusicXML if available, otherwise default
+        const scoreBpm = player.playbackSettings?.bpm;
+        if (scoreBpm && scoreBpm > 0) {
+          setBpm(Math.round(scoreBpm));
+        } else {
+          player.setBpm(bpm);
+        }
         setLoaded(true);
       })
       .catch((err) => {
@@ -41,57 +76,36 @@ export default function SheetViewer({ musicXmlUrl }: Props) {
       });
 
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      player.stop();
       osmdRef.current = null;
-      cursorRef.current = null;
+      playerRef.current = null;
     };
   }, [musicXmlUrl]);
 
   const play = () => {
-    if (!cursorRef.current) return;
-    setPlaying(true);
-
-    const bpm = 120 * tempo;
-    const intervalMs = (60 / bpm) * 1000;
-
-    timerRef.current = window.setInterval(() => {
-      const cursor = cursorRef.current;
-      if (!cursor || cursor.Iterator.EndReached) {
-        stop();
-        return;
-      }
-      cursor.next();
-    }, intervalMs);
+    playerRef.current?.play();
   };
 
   const pause = () => {
-    setPlaying(false);
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+    playerRef.current?.pause();
   };
 
   const stop = () => {
-    pause();
-    if (cursorRef.current) {
-      cursorRef.current.reset();
-    }
+    playerRef.current?.stop();
   };
 
-  const adjustTempo = (delta: number) => {
-    const newTempo = Math.max(0.25, Math.min(2.0, tempo + delta));
-    setTempo(newTempo);
-    if (playing) {
-      pause();
-      setTimeout(() => play(), 50);
-    }
+  const adjustBpm = (delta: number) => {
+    const newBpm = Math.max(40, Math.min(240, bpm + delta));
+    setBpm(newBpm);
+    playerRef.current?.setBpm(newBpm);
   };
+
+  const playing = playbackState === PlaybackState.PLAYING;
 
   return (
     <div className="space-y-4">
-      {/* Controls */}
-      <div className="flex items-center gap-3 bg-dark-800 rounded-xl px-4 py-3">
+      {/* Controls — always visible */}
+      <div className="sticky top-0 z-10 flex items-center gap-3 bg-dark-800 rounded-xl px-4 py-3">
         {playing ? (
           <button
             onClick={pause}
@@ -118,29 +132,29 @@ export default function SheetViewer({ musicXmlUrl }: Props) {
 
         <div className="ml-4 flex items-center gap-2 text-sm text-gray-300">
           <button
-            onClick={() => adjustTempo(-0.25)}
+            onClick={() => adjustBpm(-10)}
             className="p-1 rounded hover:bg-dark-600"
           >
             <Minus className="w-4 h-4" />
           </button>
-          <span className="w-16 text-center font-mono">
-            {tempo.toFixed(2)}x
-          </span>
+          <span className="w-20 text-center font-mono">{bpm} BPM</span>
           <button
-            onClick={() => adjustTempo(0.25)}
+            onClick={() => adjustBpm(10)}
             className="p-1 rounded hover:bg-dark-600"
           >
             <Plus className="w-4 h-4" />
           </button>
-          <span className="text-gray-500 ml-1">tempo</span>
         </div>
       </div>
 
-      {/* Sheet music */}
+      {/* Scrollable sheet music container */}
       <div
-        ref={containerRef}
-        className="osmd-container bg-white rounded-xl p-6 min-h-[400px]"
-      />
+        ref={scrollRef}
+        className="bg-white rounded-xl overflow-y-auto"
+        style={{ maxHeight: "70vh" }}
+      >
+        <div ref={containerRef} className="osmd-container p-6" />
+      </div>
       {!loaded && (
         <div className="flex items-center justify-center py-12 text-gray-400">
           Loading sheet music...

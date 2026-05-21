@@ -3,10 +3,11 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /server ./cmd/server
+RUN go build -ldflags="-s -w" -o /server ./cmd/server
 
-FROM gcr.io/distroless/static-debian12
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates
 COPY --from=builder /server /server
 EXPOSE 8080
-USER nonroot:nonroot
+USER nobody:nobody
 ENTRYPOINT ["/server"]

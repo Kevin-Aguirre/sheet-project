@@ -12,6 +12,9 @@ dependencies = [
     "python-json-logger>=2.0.0",
     "pydantic>=2.7.0",
     "pydantic-settings>=2.3.0",
+    "demucs>=4.0.0",
+    "torchcodec>=0.1.0",
+    "soundfile>=0.12.0",
 ]
 
 [project.optional-dependencies]

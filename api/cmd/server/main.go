@@ -21,6 +21,7 @@ import (
 	"github.com/sheetflow/api/internal/handler"
 	"github.com/sheetflow/api/internal/middleware"
 	"github.com/sheetflow/api/internal/queue"
+	"github.com/sheetflow/api/internal/statusync"
 	"github.com/sheetflow/api/internal/storage"
 )
 
@@ -31,8 +32,24 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// PostgreSQL
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	// PostgreSQL (retry up to 30s for DNS/connection readiness)
+	var pool *pgxpool.Pool
+	var err error
+	for attempt := 1; attempt <= 10; attempt++ {
+		pool, err = pgxpool.New(ctx, cfg.DatabaseURL)
+		if err != nil {
+			slog.Warn("waiting for database", "attempt", attempt, "error", err)
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		if err = pool.Ping(ctx); err != nil {
+			pool.Close()
+			slog.Warn("waiting for database", "attempt", attempt, "error", err)
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		break
+	}
 	if err != nil {
 		slog.Error("failed to connect to database", "error", err)
 		os.Exit(1)
@@ -94,6 +111,7 @@ func main() {
 		r.Get("/jobs", jobHandler.ListJobs)
 		r.Get("/jobs/{id}", jobHandler.GetJob)
 		r.Get("/jobs/{id}/sheet", jobHandler.GetSheet)
+		r.Get("/jobs/{id}/original", jobHandler.GetOriginal)
 		r.Get("/jobs/{id}/ws", wsHandler.HandleWS)
 	})
 
@@ -105,6 +123,9 @@ func main() {
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
+
+	// Sync worker status updates from Redis to PostgreSQL
+	go statusync.Run(ctx, rdb, store)
 
 	go func() {
 		slog.Info("server starting", "port", cfg.ServerPort)

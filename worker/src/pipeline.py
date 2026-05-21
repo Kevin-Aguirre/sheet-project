@@ -7,6 +7,7 @@ from pathlib import Path
 from .config import settings
 from .converter import convert_to_musicxml
 from .metrics import job_duration_seconds, jobs_in_progress, jobs_processed_total
+from .separator import separate_piano
 from .storage import S3Client
 from .transcriber import transcribe
 
@@ -44,8 +45,12 @@ def process_job(job_data: dict, s3_client: S3Client, redis_client) -> None:
         publish_status(redis_client, job_id, "processing")
         s3_client.download_file(s3_key, mp3_path)
 
+        # Separate piano from drums/other instruments
+        publish_status(redis_client, job_id, "separating")
+        clean_audio = separate_piano(mp3_path, Path(tmp_dir))
+
         # Transcribe to MIDI
-        midi_path = transcribe(mp3_path)
+        midi_path = transcribe(clean_audio)
 
         # Convert to MusicXML
         publish_status(redis_client, job_id, "converting")
@@ -68,14 +73,15 @@ def process_job(job_data: dict, s3_client: S3Client, redis_client) -> None:
     finally:
         jobs_in_progress.dec()
         job_duration_seconds.observe(time.time() - start)
-        # Cleanup temp files
-        for path in [mp3_path, midi_path, musicxml_path]:
+        # Cleanup temp dir and all contents
+        import shutil
+        try:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        except OSError:
+            pass
+        for path in [midi_path, musicxml_path]:
             if path and path.exists():
                 try:
                     path.unlink()
                 except OSError:
                     pass
-        try:
-            Path(tmp_dir).rmdir()
-        except OSError:
-            pass
