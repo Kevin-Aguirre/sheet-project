@@ -73,7 +73,7 @@ export default function JobPage() {
 
       {status === "completed" && (
         <div className="space-y-6">
-          <SheetViewer musicXmlUrl={getSheetUrl(id!)} />
+          <SheetViewer musicXmlUrl={getSheetUrl(id!)} jobId={id!} />
           <AudioComparison
             originalUrl={`/api/jobs/${id!}/original`}
           />

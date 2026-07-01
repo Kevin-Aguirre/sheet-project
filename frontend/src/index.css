@@ -28,13 +28,59 @@ body {
   background: #4d4d72;
 }
 
-/* OSMD overrides for dark theme */
+/* OSMD renders on white pages — use dark ink so notation is clearly legible. */
 .osmd-container svg text {
-  fill: #e6e6eb !important;
+  fill: #14142b !important;
 }
 .osmd-container svg line,
 .osmd-container svg path {
-  stroke: #c0c0cc !important;
+  stroke: #14142b !important;
+}
+
+/* Playback "now playing" cursor. OSMD generates the cursor image only ~1px
+   tall in this layout, so it's invisible. Force a clear grand-staff height and
+   keep it above the notes — the image is a solid translucent green, so
+   stretching it yields a clean highlight band over the current beat. */
+.osmd-container img[id^="cursorImg"] {
+  height: 150px !important;
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* Each OSMD page as a distinct white sheet. Only layout-neutral styling here
+   (background/shadow) — margins or centering would shift the pages relative to
+   where OSMD positions the playback cursor and misalign it. */
+.osmd-container [id^="osmdSvgPage"] {
+  display: block;
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+}
+
+/* Print / Save-as-PDF: show only the sheet, one OSMD page per paper page. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .sheet-print-area,
+  .sheet-print-area * {
+    visibility: visible;
+  }
+  .sheet-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+  }
+  .osmd-container [id^="osmdSvgPage"] {
+    box-shadow: none !important;
+    margin: 0 auto !important;
+    page-break-after: always;
+    break-after: page;
+  }
 }
 
 @keyframes pulse-slow {
