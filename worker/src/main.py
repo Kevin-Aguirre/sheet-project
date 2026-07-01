@@ -38,8 +38,12 @@ def main() -> None:
     # Start Prometheus metrics server
     start_http_server(settings.metrics_port)
 
-    # Connect to Redis
-    redis_client = redis.from_url(settings.redis_url, decode_responses=True)
+    # Connect to Redis. socket_timeout=None is required for the blocking BRPOP
+    # loop below: redis-py 8.x defaults socket_timeout to 5s, which races with
+    # brpop(timeout=5) and raises spurious TimeoutErrors on every idle poll.
+    redis_client = redis.from_url(
+        settings.redis_url, decode_responses=True, socket_timeout=None
+    )
     redis_client.ping()
     logger.info("connected to redis")
 

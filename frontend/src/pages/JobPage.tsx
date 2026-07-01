@@ -43,14 +43,15 @@ export default function JobPage() {
       </div>
 
       {/* Content */}
-      {(status === "pending" || status === "processing" || status === "converting" || status === "separating") && (
+      {(status === "pending" || status === "processing" || status === "converting" || status === "separating" || status === "transcribing") && (
         <div className="flex flex-col items-center justify-center py-24 text-gray-400">
           <Loader2 className="w-12 h-12 animate-spin text-accent mb-4" />
           <p className="text-lg">
             {status === "pending" && "Waiting in queue..."}
-            {status === "separating" && "Isolating piano from other instruments..."}
-            {status === "processing" && "Transcribing audio to MIDI..."}
-            {status === "converting" && "Converting to sheet music..."}
+            {status === "processing" && "Downloading audio..."}
+            {status === "separating" && "Separating instruments..."}
+            {status === "transcribing" && "Transcribing to MIDI..."}
+            {status === "converting" && "Arranging for piano..."}
           </p>
           <p className="text-sm text-gray-500 mt-2">
             This may take a minute depending on the file length

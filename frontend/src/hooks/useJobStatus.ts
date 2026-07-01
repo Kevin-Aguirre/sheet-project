@@ -17,7 +17,13 @@ export function useJobStatus(jobId: string) {
   const { data: job, error: queryError } = useQuery({
     queryKey: ["job", jobId],
     queryFn: () => getJob(jobId),
-    refetchInterval: isConnected ? false : 3000,
+    // Always poll as a safety net (the WebSocket can miss the terminal event),
+    // slower while the socket is live, and stop once the job is done.
+    refetchInterval: (query) => {
+      const s = query.state.data?.status;
+      if (s === "completed" || s === "failed") return false;
+      return isConnected ? 10000 : 3000;
+    },
   });
 
   const connect = useCallback(() => {
@@ -60,7 +66,15 @@ export function useJobStatus(jobId: string) {
     };
   }, [connect]);
 
-  const status = wsStatus || job?.status || "pending";
+  // The DB record is authoritative: once it reports a terminal state, trust it
+  // over a possibly-stale WebSocket status (which can get stuck mid-pipeline if
+  // the final "completed"/"failed" event was missed). Otherwise prefer the
+  // low-latency WebSocket update.
+  const jobStatus = job?.status;
+  const status =
+    jobStatus === "completed" || jobStatus === "failed"
+      ? jobStatus
+      : wsStatus || jobStatus || "pending";
 
   return {
     status,

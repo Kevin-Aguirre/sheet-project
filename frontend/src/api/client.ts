@@ -43,6 +43,15 @@ export async function getJobs(): Promise<Job[]> {
   return data;
 }
 
+export async function deleteJob(id: string): Promise<void> {
+  await api.delete(`/jobs/${id}`);
+}
+
+export async function deleteAllJobs(): Promise<{ deleted: number }> {
+  const { data } = await api.delete("/jobs");
+  return data;
+}
+
 export function getSheetUrl(id: string): string {
   return `/api/jobs/${id}/sheet`;
 }

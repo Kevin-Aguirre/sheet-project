@@ -63,6 +63,14 @@ func (s *S3Client) Upload(ctx context.Context, key string, body io.Reader, conte
 	return err
 }
 
+func (s *S3Client) Delete(ctx context.Context, key string) error {
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	return err
+}
+
 func (s *S3Client) Download(ctx context.Context, key string) (io.ReadCloser, error) {
 	resp, err := s.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),

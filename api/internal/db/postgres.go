@@ -97,6 +97,44 @@ func (s *Store) ListJobs(ctx context.Context, limit int) ([]Job, error) {
 	return jobs, nil
 }
 
+// ListAllJobs returns every job (unbounded) — used to gather storage keys
+// before a bulk delete.
+func (s *Store) ListAllJobs(ctx context.Context) ([]Job, error) {
+	query := `SELECT id, status, filename, original_name, s3_key,
+	          COALESCE(result_key, ''), COALESCE(error_message, ''), created_at, updated_at
+	          FROM jobs ORDER BY created_at DESC`
+	rows, err := s.pool.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jobs []Job
+	for rows.Next() {
+		var j Job
+		if err := rows.Scan(&j.ID, &j.Status, &j.Filename, &j.OriginalName, &j.S3Key,
+			&j.ResultKey, &j.ErrorMessage, &j.CreatedAt, &j.UpdatedAt); err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, j)
+	}
+	return jobs, nil
+}
+
+func (s *Store) DeleteJob(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM jobs WHERE id = $1`, id)
+	return err
+}
+
+// DeleteAllJobs removes every job row and returns the number deleted.
+func (s *Store) DeleteAllJobs(ctx context.Context) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM jobs`)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 func nilIfEmpty(s string) *string {
 	if s == "" {
 		return nil

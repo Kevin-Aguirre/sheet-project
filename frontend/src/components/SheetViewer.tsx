@@ -18,6 +18,8 @@ export default function SheetViewer({ musicXmlUrl }: Props) {
   const playerRef = useRef<PlaybackEngine | null>(null);
 
   const [loaded, setLoaded] = useState(false);
+  const [playable, setPlayable] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [playbackState, setPlaybackState] = useState<PlaybackState>(
     PlaybackState.INIT
   );
@@ -58,21 +60,34 @@ export default function SheetViewer({ musicXmlUrl }: Props) {
     osmd
       .load(musicXmlUrl)
       .then(() => {
+        // The sheet is renderable now — show it regardless of whether the
+        // audio player can load it. Playback is a best-effort bonus.
         osmd.render();
-        return player.loadScore(osmd as any);
-      })
-      .then(() => {
-        // Use tempo from MusicXML if available, otherwise default
-        const scoreBpm = player.playbackSettings?.bpm;
-        if (scoreBpm && scoreBpm > 0) {
-          setBpm(Math.round(scoreBpm));
-        } else {
-          player.setBpm(bpm);
-        }
         setLoaded(true);
+
+        // Tempo the worker baked into the MusicXML (the estimated tempo of the
+        // original mp3). OSMD parses it here — show it even if playback fails.
+        const sheetBpm = osmd.Sheet?.DefaultStartTempoInBpm;
+        if (sheetBpm && sheetBpm > 0) setBpm(Math.round(sheetBpm));
+
+        return player
+          .loadScore(osmd as any)
+          .then(() => {
+            const initialBpm =
+              sheetBpm && sheetBpm > 0
+                ? Math.round(sheetBpm)
+                : Math.round(player.playbackSettings?.bpm || bpm);
+            setBpm(initialBpm);
+            player.setBpm(initialBpm);
+            setPlayable(true);
+          })
+          .catch((err) => {
+            console.warn("Playback unavailable for this score:", err);
+          });
       })
       .catch((err) => {
         console.error("Failed to load MusicXML:", err);
+        setError("Could not render this sheet music.");
       });
 
     return () => {
@@ -94,11 +109,13 @@ export default function SheetViewer({ musicXmlUrl }: Props) {
     playerRef.current?.stop();
   };
 
-  const adjustBpm = (delta: number) => {
-    const newBpm = Math.max(40, Math.min(240, bpm + delta));
-    setBpm(newBpm);
-    playerRef.current?.setBpm(newBpm);
+  const applyBpm = (value: number) => {
+    const clamped = Math.max(40, Math.min(240, Math.round(value)));
+    setBpm(clamped);
+    playerRef.current?.setBpm(clamped);
   };
+
+  const adjustBpm = (delta: number) => applyBpm(bpm + delta);
 
   const playing = playbackState === PlaybackState.PLAYING;
 
@@ -116,7 +133,7 @@ export default function SheetViewer({ musicXmlUrl }: Props) {
         ) : (
           <button
             onClick={play}
-            disabled={!loaded}
+            disabled={!playable}
             className="p-2 rounded-lg bg-accent hover:bg-accent-dark transition disabled:opacity-40"
           >
             <Play className="w-5 h-5" />
@@ -124,7 +141,7 @@ export default function SheetViewer({ musicXmlUrl }: Props) {
         )}
         <button
           onClick={stop}
-          disabled={!loaded}
+          disabled={!playable}
           className="p-2 rounded-lg bg-dark-600 hover:bg-dark-500 transition disabled:opacity-40"
         >
           <Square className="w-5 h-5" />
@@ -132,14 +149,30 @@ export default function SheetViewer({ musicXmlUrl }: Props) {
 
         <div className="ml-4 flex items-center gap-2 text-sm text-gray-300">
           <button
-            onClick={() => adjustBpm(-10)}
+            onClick={() => adjustBpm(-1)}
             className="p-1 rounded hover:bg-dark-600"
           >
             <Minus className="w-4 h-4" />
           </button>
-          <span className="w-20 text-center font-mono">{bpm} BPM</span>
+          <div className="flex items-center gap-1 font-mono">
+            <input
+              type="number"
+              min={40}
+              max={240}
+              value={bpm}
+              onChange={(e) => {
+                const v = e.target.valueAsNumber;
+                if (Number.isNaN(v)) return;
+                setBpm(v);
+                playerRef.current?.setBpm(v);
+              }}
+              onBlur={() => applyBpm(bpm)}
+              className="w-14 text-center bg-dark-700 rounded py-0.5 [appearance:textfield] focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+            <span>BPM</span>
+          </div>
           <button
-            onClick={() => adjustBpm(10)}
+            onClick={() => adjustBpm(1)}
             className="p-1 rounded hover:bg-dark-600"
           >
             <Plus className="w-4 h-4" />
@@ -155,9 +188,14 @@ export default function SheetViewer({ musicXmlUrl }: Props) {
       >
         <div ref={containerRef} className="osmd-container p-6" />
       </div>
-      {!loaded && (
+      {!loaded && !error && (
         <div className="flex items-center justify-center py-12 text-gray-400">
           Loading sheet music...
+        </div>
+      )}
+      {error && (
+        <div className="flex items-center justify-center py-12 text-red-400">
+          {error}
         </div>
       )}
     </div>

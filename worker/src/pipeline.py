@@ -1,5 +1,6 @@
 import json
 import logging
+import shutil
 import tempfile
 import time
 from pathlib import Path
@@ -7,7 +8,6 @@ from pathlib import Path
 from .config import settings
 from .converter import convert_to_musicxml
 from .metrics import job_duration_seconds, jobs_in_progress, jobs_processed_total
-from .separator import separate_piano
 from .storage import S3Client
 from .transcriber import transcribe
 
@@ -22,8 +22,6 @@ def publish_status(redis_client, job_id: str, status: str, result_key: str = "",
         "error": error,
     })
     redis_client.publish(f"jobs:{job_id}:status", msg)
-
-    # Also update the job hash so the API can read latest status
     redis_client.hset(f"jobs:{job_id}", mapping={"status": status, "result_key": result_key, "error": error})
 
 
@@ -41,16 +39,13 @@ def process_job(job_data: dict, s3_client: S3Client, redis_client) -> None:
     musicxml_path = None
 
     try:
-        # Download MP3
+        # Download
         publish_status(redis_client, job_id, "processing")
         s3_client.download_file(s3_key, mp3_path)
 
-        # Separate piano from drums/other instruments
-        publish_status(redis_client, job_id, "separating")
-        clean_audio = separate_piano(mp3_path, Path(tmp_dir))
-
-        # Transcribe to MIDI
-        midi_path = transcribe(clean_audio)
+        # Transcribe piano audio directly — no separation needed
+        publish_status(redis_client, job_id, "transcribing")
+        midi_path = transcribe(mp3_path)
 
         # Convert to MusicXML
         publish_status(redis_client, job_id, "converting")
@@ -73,12 +68,7 @@ def process_job(job_data: dict, s3_client: S3Client, redis_client) -> None:
     finally:
         jobs_in_progress.dec()
         job_duration_seconds.observe(time.time() - start)
-        # Cleanup temp dir and all contents
-        import shutil
-        try:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-        except OSError:
-            pass
+        shutil.rmtree(tmp_dir, ignore_errors=True)
         for path in [midi_path, musicxml_path]:
             if path and path.exists():
                 try:

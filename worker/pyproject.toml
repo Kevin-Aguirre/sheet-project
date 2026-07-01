@@ -4,7 +4,11 @@ version = "0.1.0"
 description = "SheetFlow ML transcription worker"
 requires-python = ">=3.11"
 dependencies = [
-    "basic-pitch>=0.3.0",
+    # Piano transcription: ByteDance high-resolution model (SOTA for solo piano).
+    # torch itself is installed CPU-only in the Dockerfile to avoid the CUDA build.
+    "piano_transcription_inference>=0.0.5",
+    "librosa>=0.10.0",
+    "numpy<2",  # torch 2.2 / numba build against numpy 1.x
     "music21>=9.1.0",
     "redis>=5.0.0",
     "boto3>=1.34.0",
@@ -12,9 +16,7 @@ dependencies = [
     "python-json-logger>=2.0.0",
     "pydantic>=2.7.0",
     "pydantic-settings>=2.3.0",
-    "demucs>=4.0.0",
-    "torchcodec>=0.1.0",
-    "soundfile>=0.12.0",
+    "pretty-midi>=0.2.10",
 ]
 
 [project.optional-dependencies]

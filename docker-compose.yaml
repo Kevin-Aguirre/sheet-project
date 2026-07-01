@@ -33,7 +33,6 @@ services:
       S3_SECRET_KEY: minioadmin
       S3_USE_PATH_STYLE: "true"
       NUMBA_CACHE_DIR: /tmp
-      TORCH_HOME: /tmp/torch
     depends_on:
       redis:
         condition: service_healthy
@@ -54,8 +53,10 @@ services:
       POSTGRES_USER: sheetflow
       POSTGRES_PASSWORD: sheetflow
       POSTGRES_DB: sheetflow
+    # Host port 5433 to avoid colliding with a local Postgres on 5432.
+    # Internal services still connect via the Docker network on 5432.
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

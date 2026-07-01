@@ -86,7 +86,7 @@ func main() {
 	// Handlers
 	q := queue.NewRedisQueue(rdb)
 	uploadHandler := handler.NewUploadHandler(store, s3Client, q, cfg.MaxUploadSize)
-	jobHandler := handler.NewJobHandler(store, s3Client)
+	jobHandler := handler.NewJobHandler(store, s3Client, rdb)
 	wsHandler := handler.NewWSHandler(q)
 	healthHandler := handler.NewHealthHandler(pool, rdb)
 
@@ -94,7 +94,7 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{cfg.AllowedOrigins},
-		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
+		AllowedMethods:   []string{"GET", "POST", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Content-Type", "Authorization"},
 		AllowCredentials: true,
 		MaxAge:           300,
@@ -109,7 +109,9 @@ func main() {
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/upload", uploadHandler.Upload)
 		r.Get("/jobs", jobHandler.ListJobs)
+		r.Delete("/jobs", jobHandler.DeleteAllJobs)
 		r.Get("/jobs/{id}", jobHandler.GetJob)
+		r.Delete("/jobs/{id}", jobHandler.DeleteJob)
 		r.Get("/jobs/{id}/sheet", jobHandler.GetSheet)
 		r.Get("/jobs/{id}/original", jobHandler.GetOriginal)
 		r.Get("/jobs/{id}/ws", wsHandler.HandleWS)
